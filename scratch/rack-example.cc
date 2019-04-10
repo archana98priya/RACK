@@ -74,6 +74,7 @@ int main (int argc, char *argv[])
   bool rack = false;
   bool reorder = false;
   bool dupack = true;
+  bool tlp = true;
 
   std::string dirToSave = "mkdir -p " + dir;
   system (dirToSave.c_str ());
@@ -88,6 +89,7 @@ int main (int argc, char *argv[])
   cmd.AddValue ("rack", "Enable/Disable RACK mode", rack);
   cmd.AddValue ("reorder", "Enable/Disable Rrordering of packets", reorder);
   cmd.AddValue ("dupack", "Enable/Disable 3-DUPACK", dupack);
+  cmd.AddValue ("tlp", "Enable/Disable TLP mode", tlp);
   cmd.Parse (argc,argv);
 
   uv->SetStream (stream);
@@ -163,6 +165,7 @@ int main (int argc, char *argv[])
   Config::SetDefault ("ns3::TcpSocketBase::Sack", BooleanValue(true));
   Config::SetDefault ("ns3::FifoQueueDisc::MaxSize", QueueSizeValue (QueueSize ("50p")));
   Config::SetDefault ("ns3::TcpSocketBase::WindowScaling", BooleanValue (true));
+  Config::SetDefault ("ns3::TcpSocketBase::Tlp",BooleanValue(tlp));
 
   if (!dupack)
     {
