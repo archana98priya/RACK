@@ -58,7 +58,8 @@
 #include "tcp-option-sack.h"
 #include "tcp-congestion-ops.h"
 #include "tcp-recovery-ops.h"
-#include "tcp-rack.h"
+// #include "tcp-rack.h"
+#include "tcp-tlp.h"
 
 #include <math.h>
 #include <algorithm>
@@ -122,6 +123,10 @@ TcpSocketBase::GetTypeId (void)
                   BooleanValue (false),
                   MakeBooleanAccessor (&TcpSocketBase::m_rackEnabled),
                   MakeBooleanChecker ())
+    .AddAttribute ("Tlp", "Enable or disable TLP option",
+                  BooleanValue (false),
+                  MakeBooleanAccessor (&TcpSocketBase::m_tlpEnabled),
+                  MakeBooleanChecker ())                  
     .AddAttribute ("MinRto",
                    "Minimum retransmit timeout value",
                    TimeValue (Seconds (1.0)), // RFC 6298 says min RTO=1 sec, but Linux uses 200ms.
@@ -257,12 +262,16 @@ TcpSocketBase::TcpSocketBase (void)
   m_txBuffer = CreateObject<TcpTxBuffer> ();
   m_tcb      = CreateObject<TcpSocketState> ();
   m_rack     = CreateObject<TcpRack> ();
+  m_tlp     = CreateObject<TcpTlp> ();
+
 
   m_sndFack = 0;
   m_retranData = 0;
 
+
   m_tcb->m_currentPacingRate = m_tcb->m_maxPacingRate;
   m_pacingTimer.SetFunction (&TcpSocketBase::NotifyPacingPerformed, this);
+ 
 
   bool ok;
 
@@ -346,6 +355,7 @@ TcpSocketBase::TcpSocketBase (const TcpSocketBase& sock)
     m_fackEnabled (sock.m_fackEnabled),
     m_dsackEnabled (sock.m_dsackEnabled),
     m_rackEnabled (sock.m_rackEnabled),
+    m_tlpEnabled (sock.m_tlpEnabled),
     m_recover (sock.m_recover),
     m_retxThresh (sock.m_retxThresh),
     m_limitedTx (sock.m_limitedTx),
@@ -377,6 +387,7 @@ TcpSocketBase::TcpSocketBase (const TcpSocketBase& sock)
   m_rxBuffer = CopyObject (sock.m_rxBuffer);
   m_tcb = CopyObject (sock.m_tcb);
   m_rack = CopyObject (sock.m_rack);
+  m_tlp = CopyObject (sock.m_tlp);
 
   m_tcb->m_currentPacingRate = m_tcb->m_maxPacingRate;
   m_pacingTimer.SetFunction (&TcpSocketBase::NotifyPacingPerformed, this);
@@ -1804,6 +1815,31 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
       ReceivedData (packet, tcpHeader);
     }
 
+  // Number of outstanding bytes
+  uint32_t inflight = BytesInFlight (); 
+  // Get RTT value
+  Time rtt = m_rtt->GetEstimate ();
+  Time  m_pto = m_tlp->m_pto;
+  // Updating PTO
+  // Params RTT, Flightsize, Current PTO, RTO
+  m_tlp->CalculatePto(rtt,inflight,m_rto,m_pto);
+
+  // Check if condition for scheduling PTO are satisfied
+  // The connection supports SACK [RFC2018]
+  // The connection has no SACKed sequences in the SACK scoreboard
+  // The connection is not in loss recovery
+  bool enableRule3 = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
+  if(enableRule3 && !isTlpProbe)
+  {
+    // Cancel an existing timer if any.
+    if(m_tlptimerEvent.IsRunning()) m_tlptimerEvent.Cancel();
+    // Reschedule TLP timer with an updated PTO
+    m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);
+  }
+  if(isTlpProbe){
+    isTlpProbe = false;
+  }
+  
   // RFC 6675, Section 5, point (C), try to send more data. NB: (C) is implemented
   // inside SendPendingData
   SendPendingData (m_connected);
@@ -3105,6 +3141,44 @@ TcpSocketBase::UpdateRttHistory (const SequenceNumber32 &seq, uint32_t sz,
     }
 }
 
+// Triggered when PTO event fires.
+// Sends a probe packet to avoid waiting for RTO to initiate fast recovery.
+void
+TcpSocketBase::PTOTimeout (void)
+{  
+    // Computes the number of bytes that can be sent
+    uint32_t availableWindow = AvailableWindow (); 
+    uint32_t s = std::min (availableWindow, m_tcb->m_segmentSize);
+
+    // Checks if sufficient data is available to fill a segment
+    // Checks if there is enough space in receive buffer
+    SequenceNumber32 next;
+    bool enableRule3 = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
+      
+    if (!m_txBuffer->NextSeg (&next, enableRule3))
+      {
+        // Retransmit the last sent packet as probe
+        SendDataPacket (m_tcb->m_highTxMark, s, m_connected);
+      }
+    else
+      {
+        // Sent new data packet as probe
+        uint32_t sz = SendDataPacket (m_tcb->m_nextTxSequence, s, m_connected);
+        // Increment the sequence number
+        m_tcb->m_nextTxSequence += sz;
+        // Update the bytes in flight(Outstanging bytes)
+        uint32_t inflight = BytesInFlight ();
+        m_bytesInFlightTrace (inflight, inflight+sz);
+      }
+
+    isTlpProbe = true;
+    // Rearm the RTO timer in order to avoid sending back-to-back probe
+    if(m_retxEvent.IsRunning()) 
+      m_retxEvent.Cancel();
+    m_retxEvent = Simulator::Schedule (m_rto, &TcpSocketBase::ReTxTimeout, this);
+
+}
+
 // Note that this function did not implement the PSH flag
 uint32_t
 TcpSocketBase::SendPendingData (bool withAck)
@@ -3117,7 +3191,7 @@ TcpSocketBase::SendPendingData (bool withAck)
   if (m_endPoint == nullptr && m_endPoint6 == nullptr)
     {
       NS_LOG_INFO ("TcpSocketBase::SendPendingData: No endpoint; m_shutdownSend=" << m_shutdownSend);
-      return false; // Is this the right way to handle this condition?
+      return false; // Is this the rightm_tx way to handle this condition?
     }
 
   uint32_t nPacketsSent = 0;
@@ -3221,6 +3295,17 @@ TcpSocketBase::SendPendingData (bool withAck)
                         " sent seq " << m_tcb->m_nextTxSequence <<
                         " size " << sz);
           ++nPacketsSent;
+
+          Time  m_pto = m_tlp->m_pto;
+
+          // Schedule TLP timer
+          if (m_tlptimerEvent.IsRunning())
+          {
+            // Cancel existing timer
+            m_tlptimerEvent.Cancel();
+          }
+          m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);  
+
           if (m_tcb->m_pacing)
             {
               NS_LOG_INFO ("Pacing is enabled");
@@ -3602,7 +3687,7 @@ TcpSocketBase::ReTxTimeout ()
     }
 
   NS_LOG_DEBUG ("Checking if Connection is Established");
-  // If all data are received (non-closing socket and nothing to send), just return
+  // If all data are received (non-closing soReTxTimeoutcket and nothing to send), just return
   if (m_state <= ESTABLISHED && m_txBuffer->HeadSequence () >= m_tcb->m_highTxMark && m_txBuffer->Size () == 0)
     {
       NS_LOG_DEBUG ("Already Sent full data" << m_txBuffer->HeadSequence () << " " << m_tcb->m_highTxMark);
@@ -3824,6 +3909,7 @@ TcpSocketBase::CancelAllTimers ()
   m_timewaitEvent.Cancel ();
   m_sendPendingDataEvent.Cancel ();
   m_pacingTimer.Cancel ();
+  m_tlptimerEvent.Cancel();
 }
 
 /* Move TCP to Time_Wait state and schedule a transition to Closed state */
