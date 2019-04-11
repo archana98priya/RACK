@@ -43,7 +43,6 @@ TcpTlp::~TcpTlp ()
   NS_LOG_FUNCTION (this);
 }
 
-
 // Calculate the value of PTO
 // Params RTT  - Round trip time
 // Flightsize  - Number of outstanding bytes
@@ -53,12 +52,10 @@ void
 TcpTlp::CalculatePto(Time lastRtt, uint32_t flightsize, Time rto, Time curr_pto)
 {
     Time rtt = lastRtt;
-
     if (rtt > Seconds(0))
-     {
+    {
         m_tlpRtt = rtt;
-     }
-
+    }
     // Compute SRTT - Smooth round trip time
     if (m_srtt == 0)
     {
@@ -68,29 +65,26 @@ TcpTlp::CalculatePto(Time lastRtt, uint32_t flightsize, Time rto, Time curr_pto)
     {
       m_srtt = (1 - m_alpha) * m_srtt + m_alpha * m_tlpRtt.GetMilliSeconds ();
     }
-    
     // Update PTO
-    if(m_srtt != -1)
+    if (m_srtt != -1)
     {
         curr_pto = MilliSeconds(2 * m_srtt);
-        if(flightsize == 1)
+        if (flightsize == 1)
+        {
           // To compensate for a potential long delayed ACK timer at the receiver
           curr_pto += MilliSeconds(200) ;
+        }
         else
+        {
           curr_pto += MilliSeconds(2);
+        }
     }      
     else
+    {
         curr_pto = Seconds(1.0);
-    
-    // 
-    // The min value of PTO is 10ms
-    // curr_pto = std :: max (MilliSeconds(10),curr_pto) ;
-    // 
-    
+    }
     // The max value for PTO should be RTO
     curr_pto = std :: min (rto , curr_pto) ; 
-
     m_pto = curr_pto;   
 }
-
 }
