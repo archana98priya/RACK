@@ -1815,31 +1815,27 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
       ReceivedData (packet, tcpHeader);
     }
 
-  // Number of outstanding bytes
   uint32_t inflight = BytesInFlight (); 
-  // Get RTT value
   Time rtt = m_rtt->GetEstimate ();
   Time  m_pto = m_tlp->m_pto;
   // Updating PTO
-  // Params RTT, Flightsize, Current PTO, RTO
   m_tlp->CalculatePto(rtt,inflight,m_rto,m_pto);
-
   // Check if condition for scheduling PTO are satisfied
   // The connection supports SACK [RFC2018]
   // The connection has no SACKed sequences in the SACK scoreboard
   // The connection is not in loss recovery
-  bool enableRule3 = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
-  if(enableRule3 && !isTlpProbe)
-  {
-    // Cancel an existing timer if any.
-    if(m_tlptimerEvent.IsRunning()) m_tlptimerEvent.Cancel();
-    // Reschedule TLP timer with an updated PTO
-    m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);
-  }
-  if(isTlpProbe){
-    isTlpProbe = false;
-  }
-  
+  bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
+  if (checkConnectionState && !isTlpProbe)
+    {
+      // Cancel an existing timer if any.
+      if (m_tlptimerEvent.IsRunning()) m_tlptimerEvent.Cancel();
+      // Reschedule TLP timer with an updated PTO
+      m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);
+    }
+  if (isTlpProbe)
+    {
+      isTlpProbe = false;
+    }
   // RFC 6675, Section 5, point (C), try to send more data. NB: (C) is implemented
   // inside SendPendingData
   SendPendingData (m_connected);
@@ -3140,7 +3136,6 @@ TcpSocketBase::UpdateRttHistory (const SequenceNumber32 &seq, uint32_t sz,
         }
     }
 }
-
 // Triggered when PTO event fires.
 // Sends a probe packet to avoid waiting for RTO to initiate fast recovery.
 void
@@ -3148,17 +3143,16 @@ TcpSocketBase::PTOTimeout (void)
 {  
     // Computes the number of bytes that can be sent
     uint32_t availableWindow = AvailableWindow (); 
-    uint32_t s = std::min (availableWindow, m_tcb->m_segmentSize);
-
+    uint32_t transmitableData = std::min (availableWindow, m_tcb->m_segmentSize);
     // Checks if sufficient data is available to fill a segment
     // Checks if there is enough space in receive buffer
     SequenceNumber32 next;
-    bool enableRule3 = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
+    bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
       
-    if (!m_txBuffer->NextSeg (&next, enableRule3))
+    if (!m_txBuffer->NextSeg (&next, checkConnectionState))
       {
         // Retransmit the last sent packet as probe
-        SendDataPacket (m_tcb->m_highTxMark, s, m_connected);
+        SendDataPacket (m_tcb->m_highTxMark, transmitableData, m_connected);
       }
     else
       {
@@ -3173,8 +3167,10 @@ TcpSocketBase::PTOTimeout (void)
 
     isTlpProbe = true;
     // Rearm the RTO timer in order to avoid sending back-to-back probe
-    if(m_retxEvent.IsRunning()) 
+    if (m_retxEvent.IsRunning())
+    { 
       m_retxEvent.Cancel();
+    }
     m_retxEvent = Simulator::Schedule (m_rto, &TcpSocketBase::ReTxTimeout, this);
 
 }
@@ -3215,24 +3211,19 @@ TcpSocketBase::SendPendingData (bool withAck)
           NS_LOG_INFO ("Timer is not running");
         }
 
-      if (m_tcb->m_congState == TcpSocketState::CA_OPEN
-          && m_state == TcpSocket::FIN_WAIT_1)
+      if (m_tcb->m_congState == TcpSocketState::CA_OPEN && m_state == TcpSocket::FIN_WAIT_1)
         {
           NS_LOG_INFO ("FIN_WAIT and OPEN state; no data to transmit");
           break;
         }
-      // (C.1) The scoreboard MUST be queried via NextSeg () for the
-      //       sequence number range of the next segment to transmit (if
-      //       any), and the given segment sent.  If NextSeg () returns
-      //       failure (no data to send), return without sending anything
-      //       (i.e., terminate steps C.1 -- C.5).
+
       SequenceNumber32 next;
-      bool enableRule3 = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
-      if (!m_txBuffer->NextSeg (&next, enableRule3))
-        {
+      bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
+      if (!m_txBuffer->NextSeg (&next, checkConnectionState))
+       {
           NS_LOG_INFO ("no valid seq to transmit, or no data available");
           break;
-        }
+       }
       else
         {
           // It's time to transmit, but before do silly window and Nagle's check
@@ -3295,9 +3286,7 @@ TcpSocketBase::SendPendingData (bool withAck)
                         " sent seq " << m_tcb->m_nextTxSequence <<
                         " size " << sz);
           ++nPacketsSent;
-
           Time  m_pto = m_tlp->m_pto;
-
           // Schedule TLP timer
           if (m_tlptimerEvent.IsRunning())
           {
@@ -3305,7 +3294,6 @@ TcpSocketBase::SendPendingData (bool withAck)
             m_tlptimerEvent.Cancel();
           }
           m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);  
-
           if (m_tcb->m_pacing)
             {
               NS_LOG_INFO ("Pacing is enabled");
@@ -3318,7 +3306,6 @@ TcpSocketBase::SendPendingData (bool withAck)
                 }
             }
         }
-
       // (C.4) The estimate of the amount of data outstanding in the
       //       network must be updated by incrementing pipe by the number
       //       of octets transmitted in (C.1).
