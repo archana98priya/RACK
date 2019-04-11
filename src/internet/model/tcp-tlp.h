@@ -17,8 +17,8 @@
  *
  * Author: Shikha Bakshi <shikhabakshi912@gmail.com>
  *         Mohit P. Tahiliani <tahiliani@nitk.edu.in>
-           Keerthana Polkampally
-           Archana Priyadarshini Sahoo
+           Keerthana Polkampally <keerthana.keethu.p@gmail.com>
+           Archana Priyadarshini Sahoo <archana98priya@gmail.com>
            Durvesh Shyam  Bhalekar <durvesh.5.db@gmail.com>
  *
  */
