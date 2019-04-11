@@ -58,7 +58,6 @@
 #include "tcp-option-sack.h"
 #include "tcp-congestion-ops.h"
 #include "tcp-recovery-ops.h"
-// #include "tcp-rack.h"
 #include "tcp-tlp.h"
 
 #include <math.h>
