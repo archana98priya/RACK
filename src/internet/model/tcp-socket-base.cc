@@ -1818,22 +1818,26 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
   Time rtt = m_rtt->GetEstimate ();
   Time  m_pto = m_tlp->m_pto;
   // Updating PTO
-  m_tlp->CalculatePto(rtt,inflight,m_rto,m_pto);
-  // Check if condition for scheduling PTO are satisfied
-  // The connection supports SACK [RFC2018]
-  // The connection has no SACKed sequences in the SACK scoreboard
-  // The connection is not in loss recovery
-  bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
-  if (checkConnectionState && !isTlpProbe)
+  if (m_tlpEnabled)
     {
-      // Cancel an existing timer if any.
-      if (m_tlptimerEvent.IsRunning()) m_tlptimerEvent.Cancel();
-      // Reschedule TLP timer with an updated PTO
-      m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);
-    }
-  if (isTlpProbe)
-    {
-      isTlpProbe = false;
+      m_tlp->CalculatePto(rtt,inflight,m_rto,m_pto);
+     // Check if condition for scheduling PTO are satisfied
+     // The connection supports SACK [RFC2018]
+     // The connection has no SACKed sequences in the SACK scoreboard
+     // The connection is not in loss recovery
+     bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
+
+      if (checkConnectionState && !isTlpProbe)
+        {
+          // Cancel an existing timer if any.
+          if (m_tlptimerEvent.IsRunning()) m_tlptimerEvent.Cancel();
+          // Reschedule TLP timer with an updated PTO
+          m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);
+        }
+      if (isTlpProbe)
+        {
+          isTlpProbe = false;
+        }
     }
   // RFC 6675, Section 5, point (C), try to send more data. NB: (C) is implemented
   // inside SendPendingData
@@ -3155,8 +3159,8 @@ TcpSocketBase::PTOTimeout (void)
       }
     else
       {
-        // Sent new data packet as probe
-        uint32_t sz = SendDataPacket (m_tcb->m_nextTxSequence, s, m_connected);
+        // Send new data packet as probe
+        uint32_t sz = SendDataPacket (m_tcb->m_nextTxSequence, transmitableData, m_connected);
         // Increment the sequence number
         m_tcb->m_nextTxSequence += sz;
         // Update the bytes in flight(Outstanging bytes)
@@ -3285,14 +3289,17 @@ TcpSocketBase::SendPendingData (bool withAck)
                         " sent seq " << m_tcb->m_nextTxSequence <<
                         " size " << sz);
           ++nPacketsSent;
-          Time  m_pto = m_tlp->m_pto;
-          // Schedule TLP timer
-          if (m_tlptimerEvent.IsRunning())
-          {
-            // Cancel existing timer
-            m_tlptimerEvent.Cancel();
-          }
-          m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);  
+          if (m_tlpEnabled)
+            {
+              Time  m_pto = m_tlp->m_pto;
+             // Schedule TLP timer
+             if (m_tlptimerEvent.IsRunning())
+               {
+                 // Cancel existing timer
+                 m_tlptimerEvent.Cancel();
+               }
+             m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);  
+            }
           if (m_tcb->m_pacing)
             {
               NS_LOG_INFO ("Pacing is enabled");

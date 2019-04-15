@@ -44,13 +44,10 @@ TcpTlp::~TcpTlp ()
 }
 
 // Calculate the value of PTO
-// Params RTT  - Round trip time
-// Flightsize  - Number of outstanding bytes
-// RTO         - Retransmission Timeout
-// Current PTO - Current value of the Probe timeout
 void 
 TcpTlp::CalculatePto(Time lastRtt, uint32_t flightsize, Time rto, Time curr_pto)
 {
+  NS_LOG_FUNCTION (this);
     Time rtt = lastRtt;
     if (rtt > Seconds(0))
     {

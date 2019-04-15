@@ -1,6 +1,6 @@
 /* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
 /*
- * Copyright (c) 2018 NITK Surathkal
+ * Copyright (c) 2019 NITK Surathkal
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -20,7 +20,6 @@
            Keerthana Polkampally <keerthana.keethu.p@gmail.com>
            Archana Priyadarshani Sahoo <archana98priya@gmail.com>
            Durvesh Shyam  Bhalekar <durvesh.5.db@gmail.com>
- *
  */
 #pragma once
 
