@@ -1820,13 +1820,13 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
   // Updating PTO
   if (m_tlpEnabled)
     {
-      Time  m_pto = m_tlp->m_pto;
+      Time  m_pto = m_tlp->getPTO();
       m_tlp->CalculatePto(rtt,inflight,m_rto,m_pto);
       // Check if condition for scheduling PTO are satisfied
       // The connection supports SACK [RFC2018]
       // The connection has no SACKed sequences in the SACK scoreboard
       // The connection is not in loss recovery
-      bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
+      bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_OPEN;
 
       if (checkConnectionState && !isTlpProbe)
         {
@@ -3153,21 +3153,21 @@ TcpSocketBase::PTOTimeout (void)
     SequenceNumber32 next;
     bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
       
+    uint32_t sz;
     if (!m_txBuffer->NextSeg (&next, checkConnectionState))
       {
         // Retransmit the last sent packet as probe
-        SendDataPacket (m_tcb->m_highTxMark, transmitableData, m_connected);
+        sz = SendDataPacket (m_tcb->m_highTxMark, transmitableData, m_connected);
       }
     else
       {
         // Send new data packet as probe
-        uint32_t sz = SendDataPacket (m_tcb->m_nextTxSequence, transmitableData, m_connected);
+        sz = SendDataPacket (m_tcb->m_nextTxSequence, transmitableData, m_connected);
         // Increment the sequence number
         m_tcb->m_nextTxSequence += sz;
-        // Update the bytes in flight(Outstanging bytes)
-        uint32_t inflight = BytesInFlight ();
-        m_bytesInFlightTrace (inflight, inflight+sz);
+      
       }
+    NS_ASSERT(sz>0);
 
     isTlpProbe = true;
     // Rearm the RTO timer in order to avoid sending back-to-back probe
@@ -3290,9 +3290,10 @@ TcpSocketBase::SendPendingData (bool withAck)
                         " sent seq " << m_tcb->m_nextTxSequence <<
                         " size " << sz);
           ++nPacketsSent;
-          if (m_tlpEnabled)
+          bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_OPEN;
+          if (m_tlpEnabled && checkConnectionState)
             {
-              Time  m_pto = m_tlp->m_pto;
+              Time  m_pto = m_tlp->getPTO();
              // Schedule TLP timer
              if (m_tlptimerEvent.IsRunning())
                {
