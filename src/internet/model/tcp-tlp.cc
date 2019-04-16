@@ -43,6 +43,11 @@ TcpTlp::~TcpTlp ()
   NS_LOG_FUNCTION (this);
 }
 
+Time TcpTlp::getPTO()
+  {
+    return m_pto;
+  }
+
 // Calculate the value of PTO
 void 
 TcpTlp::CalculatePto(Time lastRtt, uint32_t flightsize, Time rto, Time curr_pto)

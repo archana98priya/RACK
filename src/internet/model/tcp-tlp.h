@@ -45,25 +45,21 @@ public:
   //brief Copy constructor.
   //param other object to copy.
   TcpTlp (const TcpTlp &other);
+
+  //Returns PTO value
+  Time getPTO();
+  
   //brief Deconstructor
   virtual ~TcpTlp ();
+
 
   void CalculatePto(Time srtt, uint32_t flightsize, Time rto, Time curr_pto);
 
   private:
-    Time             m_rackXmitTs                {0}; //!< Latest transmission timestamp of Rack.packet
-    SequenceNumber32 m_rackEndSeq                {0}; //!< Ending sequence number of Rack.packet
-    Time             m_rackRtt                   {0}; //!< RTT of the most recently transmitted packet that has been acknowledged
-    double           m_reoWnd                    {0}; //!< Re-ordering Window
-    Time             m_minRtt                    {0}; //!< Minimum RTT
-    SequenceNumber32 m_rttSeq                    {0}; //!< SND.NXT when RACK.rtt is updated
-    bool             m_dsack                 {false}; //!< If a DSACK option has been received since last RACK.reo_wnd change
-    uint32_t         m_reoWndIncr                {1}; //!< Multiplier applied to adjust RACK.reo_wnd
-    uint32_t         m_reoWndPersist            {16}; //!< Number of loss recoveries before resetting RACK.reo_wnd 
+
     double           m_srtt                      {0}; //!< Smoothened RTT (SRTT) as specified in [RFC6298]
     double           m_alpha                 {0.125}; //!< EWMA constant for calculation of SRTT (alpha = 1/8)
   
-  public:
     Time             m_pto                       {0}; //!< PTO values>  
     Time             m_tlpRtt                    {0}; //!< RTT value used for TLP>
 };
