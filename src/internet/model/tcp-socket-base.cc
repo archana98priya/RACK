@@ -1816,16 +1816,17 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
 
   uint32_t inflight = BytesInFlight (); 
   Time rtt = m_rtt->GetEstimate ();
-  Time  m_pto = m_tlp->m_pto;
+
   // Updating PTO
   if (m_tlpEnabled)
     {
+      Time  m_pto = m_tlp->m_pto;
       m_tlp->CalculatePto(rtt,inflight,m_rto,m_pto);
-     // Check if condition for scheduling PTO are satisfied
-     // The connection supports SACK [RFC2018]
-     // The connection has no SACKed sequences in the SACK scoreboard
-     // The connection is not in loss recovery
-     bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
+      // Check if condition for scheduling PTO are satisfied
+      // The connection supports SACK [RFC2018]
+      // The connection has no SACKed sequences in the SACK scoreboard
+      // The connection is not in loss recovery
+      bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
 
       if (checkConnectionState && !isTlpProbe)
         {
@@ -3221,8 +3222,8 @@ TcpSocketBase::SendPendingData (bool withAck)
         }
 
       SequenceNumber32 next;
-      bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
-      if (!m_txBuffer->NextSeg (&next, checkConnectionState))
+      bool enableRule3 = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
+      if (!m_txBuffer->NextSeg (&next, enableRule3))
        {
           NS_LOG_INFO ("no valid seq to transmit, or no data available");
           break;
