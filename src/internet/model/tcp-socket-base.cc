@@ -263,15 +263,12 @@ TcpSocketBase::TcpSocketBase (void)
   m_rack     = CreateObject<TcpRack> ();
   m_tlp     = CreateObject<TcpTlp> ();
 
-
   m_sndFack = 0;
   m_retranData = 0;
-
 
   m_tcb->m_currentPacingRate = m_tcb->m_maxPacingRate;
   m_pacingTimer.SetFunction (&TcpSocketBase::NotifyPacingPerformed, this);
  
-
   bool ok;
 
   ok = m_tcb->TraceConnectWithoutContext ("CongestionWindow",
@@ -1820,7 +1817,7 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
   // Updating PTO
   if (m_tlpEnabled)
     {
-      Time  m_pto = m_tlp->getPTO();
+      Time  m_pto = m_tlp->GetPTO();
       m_tlp->CalculatePto(rtt,inflight,m_rto,m_pto);
       // Check if condition for scheduling PTO are satisfied
       // The connection supports SACK [RFC2018]
@@ -3151,22 +3148,24 @@ TcpSocketBase::PTOTimeout (void)
     // Checks if sufficient data is available to fill a segment
     // Checks if there is enough space in receive buffer
     SequenceNumber32 next;
-    bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY;
+    bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_OPEN;
       
     uint32_t sz;
-    if (!m_txBuffer->NextSeg (&next, checkConnectionState))
-      {
-        // Retransmit the last sent packet as probe
-        sz = SendDataPacket (m_tcb->m_highTxMark, transmitableData, m_connected);
-      }
-    else
-      {
-        // Send new data packet as probe
-        sz = SendDataPacket (m_tcb->m_nextTxSequence, transmitableData, m_connected);
-        // Increment the sequence number
-        m_tcb->m_nextTxSequence += sz;
+    if (checkConnectionState)
+    { 
       
-      }
+      if (!m_txBuffer->NextSeg (&next, false))
+        {
+          // Take the last segment sent and put it back into the un-sent list
+          m_txBuffer->ResetLastSegmentSent ();
+        }
+
+        // Send Probe packet
+        sz = SendDataPacket (m_tcb->m_nextTxSequence, transmitableData, m_connected);
+        // Incrementing the sequence number
+        m_tcb->m_nextTxSequence += sz;
+
+    }
     NS_ASSERT(sz>0);
 
     isTlpProbe = true;
@@ -3293,7 +3292,7 @@ TcpSocketBase::SendPendingData (bool withAck)
           bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_OPEN;
           if (m_tlpEnabled && checkConnectionState)
             {
-              Time  m_pto = m_tlp->getPTO();
+              Time  m_pto = m_tlp->GetPTO();
              // Schedule TLP timer
              if (m_tlptimerEvent.IsRunning())
                {

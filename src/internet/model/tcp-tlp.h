@@ -47,11 +47,10 @@ public:
   TcpTlp (const TcpTlp &other);
 
   //Returns PTO value
-  Time getPTO();
+  Time GetPTO();
   
   //brief Deconstructor
   virtual ~TcpTlp ();
-
 
   void CalculatePto(Time srtt, uint32_t flightsize, Time rto, Time curr_pto);
 

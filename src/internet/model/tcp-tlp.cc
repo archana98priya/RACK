@@ -43,7 +43,7 @@ TcpTlp::~TcpTlp ()
   NS_LOG_FUNCTION (this);
 }
 
-Time TcpTlp::getPTO()
+Time TcpTlp::GetPTO()
   {
     return m_pto;
   }
