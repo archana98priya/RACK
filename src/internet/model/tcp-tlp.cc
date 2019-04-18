@@ -43,17 +43,13 @@ TcpTlp::~TcpTlp ()
   NS_LOG_FUNCTION (this);
 }
 
-Time TcpTlp::GetPTO()
-  {
-    return m_pto;
-  }
-
 // Calculate the value of PTO
-void 
-TcpTlp::CalculatePto(Time lastRtt, uint32_t flightsize, Time rto, Time curr_pto)
+Time 
+TcpTlp::CalculatePto(Time lastRtt, uint32_t flightsize, Time rto_left)
 {
   NS_LOG_FUNCTION (this);
     Time rtt = lastRtt;
+    Time curr_pto;
     if (rtt > Seconds(0))
     {
         m_tlpRtt = rtt;
@@ -67,10 +63,11 @@ TcpTlp::CalculatePto(Time lastRtt, uint32_t flightsize, Time rto, Time curr_pto)
     {
       m_srtt = (1 - m_alpha) * m_srtt + m_alpha * m_tlpRtt.GetMilliSeconds ();
     }
+
     // Update PTO
-    if (m_srtt != -1)
+    if (m_srtt > 0)
     {
-        curr_pto = MilliSeconds(2 * m_srtt);
+        curr_pto = MilliSeconds (2 * m_srtt);
         if (flightsize == 1)
         {
           // To compensate for a potential long delayed ACK timer at the receiver
@@ -83,10 +80,14 @@ TcpTlp::CalculatePto(Time lastRtt, uint32_t flightsize, Time rto, Time curr_pto)
     }      
     else
     {
-        curr_pto = Seconds(1.0);
+        curr_pto = MilliSeconds(1000);
     }
+
+    
     // The max value for PTO should be RTO
-    curr_pto = std :: min (rto , curr_pto) ; 
-    m_pto = curr_pto;   
+    curr_pto = std :: min (rto_left, curr_pto) ; 
+    m_pto = curr_pto; 
+
+    return m_pto;  
 }
 }

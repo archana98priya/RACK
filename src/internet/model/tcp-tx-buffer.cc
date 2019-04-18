@@ -649,6 +649,24 @@ TcpTxBuffer::RemoveFromCounts (TcpTxItem *item, uint32_t size)
     }
 }
 
+SequenceNumber32 
+TcpTxBuffer::GetLastPacket ()
+{
+  auto it = m_sentList.end();
+  it--;
+  TcpTxItem *packet = *it;
+
+  
+  while ((packet->m_sacked || packet->m_lost) && it!= m_sentList.begin())
+  {
+    it--;
+    packet = *it;
+  }
+
+  return packet->m_startSeq;
+  
+}
+
 void
 TcpTxBuffer::GetPacketInfo (SequenceNumber32 ack, TcpTxItem *item)
 {

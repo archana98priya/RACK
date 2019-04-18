@@ -1810,33 +1810,6 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
     {
       ReceivedData (packet, tcpHeader);
     }
-
-  uint32_t inflight = BytesInFlight (); 
-  Time rtt = m_rtt->GetEstimate ();
-
-  // Updating PTO
-  if (m_tlpEnabled)
-    {
-      Time  m_pto = m_tlp->GetPTO();
-      m_tlp->CalculatePto(rtt,inflight,m_rto,m_pto);
-      // Check if condition for scheduling PTO are satisfied
-      // The connection supports SACK [RFC2018]
-      // The connection has no SACKed sequences in the SACK scoreboard
-      // The connection is not in loss recovery
-      bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_OPEN;
-
-      if (checkConnectionState && !isTlpProbe)
-        {
-          // Cancel an existing timer if any.
-          if (m_tlptimerEvent.IsRunning()) m_tlptimerEvent.Cancel();
-          // Reschedule TLP timer with an updated PTO
-          m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);
-        }
-      if (isTlpProbe)
-        {
-          isTlpProbe = false;
-        }
-    }
   // RFC 6675, Section 5, point (C), try to send more data. NB: (C) is implemented
   // inside SendPendingData
   SendPendingData (m_connected);
@@ -3144,29 +3117,35 @@ TcpSocketBase::PTOTimeout (void)
 {  
     // Computes the number of bytes that can be sent
     uint32_t availableWindow = AvailableWindow (); 
-    uint32_t transmitableData = std::min (availableWindow, m_tcb->m_segmentSize);
+    uint32_t transmitableData = availableWindow >= m_tcb->m_segmentSize ? m_tcb->m_segmentSize : 0;
     // Checks if sufficient data is available to fill a segment
     // Checks if there is enough space in receive buffer
     SequenceNumber32 next;
     bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_OPEN;
       
-    uint32_t sz;
+    uint32_t sz = 0;
+    SequenceNumber32 lastPacketSent;
     if (checkConnectionState)
     { 
-      
-      if (!m_txBuffer->NextSeg (&next, false))
+       if(transmitableData > 0)
         {
-          // Take the last segment sent and put it back into the un-sent list
-          m_txBuffer->ResetLastSegmentSent ();
+          // Send Probe packet
+          sz = SendDataPacket (m_tcb->m_nextTxSequence, transmitableData, m_connected);
+          // Incrementing the sequence number
+          m_tcb->m_nextTxSequence += sz; 
         }
-
-        // Send Probe packet
-        sz = SendDataPacket (m_tcb->m_nextTxSequence, transmitableData, m_connected);
-        // Incrementing the sequence number
-        m_tcb->m_nextTxSequence += sz;
-
-    }
-    NS_ASSERT(sz>0);
+       if(sz==0)
+        {
+          lastPacketSent = m_txBuffer->GetLastPacket();
+          // std::cout<<lastPacketSent<<std::endl;
+          // Send Probe packet
+          sz = SendDataPacket (lastPacketSent, m_tcb->m_segmentSize, m_connected);
+          // Incrementing the sequence number
+          m_tcb->m_nextTxSequence += sz;
+        }
+        
+     }
+    //NS_ASSERT(sz>0);
 
     isTlpProbe = true;
     // Rearm the RTO timer in order to avoid sending back-to-back probe
@@ -3292,13 +3271,17 @@ TcpSocketBase::SendPendingData (bool withAck)
           bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_OPEN;
           if (m_tlpEnabled && checkConnectionState)
             {
-              Time  m_pto = m_tlp->GetPTO();
+              Time rto_left = MilliSeconds((Simulator::GetDelayLeft (m_retxEvent)));
              // Schedule TLP timer
              if (m_tlptimerEvent.IsRunning())
                {
                  // Cancel existing timer
                  m_tlptimerEvent.Cancel();
                }
+             uint32_t inflight = BytesInFlight (); 
+             Time rtt = m_rtt->GetEstimate ();
+             Time m_pto = m_tlp->CalculatePto(rtt,inflight,MilliSeconds (rto_left));
+            
              m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);  
             }
           if (m_tcb->m_pacing)
@@ -3615,6 +3598,36 @@ TcpSocketBase::NewAck (SequenceNumber32 const& ack, bool resetRTO)
                     Simulator::Now ().GetSeconds () << " to expire at time " <<
                     (Simulator::Now () + m_rto.Get ()).GetSeconds ());
       m_retxEvent = Simulator::Schedule (m_rto, &TcpSocketBase::ReTxTimeout, this);
+      uint32_t inflight = BytesInFlight (); 
+      Time rtt = m_rtt->GetEstimate ();
+      
+
+  // Updating PTO
+  if (m_tlpEnabled)
+    {
+      // Calculate the time left for RTO to expire
+      uint32_t rto_left = (Simulator::GetDelayLeft (m_retxEvent).GetSeconds ());
+      // Calculate PTO
+      Time m_pto = m_tlp->CalculatePto(rtt,inflight,MilliSeconds (rto_left));
+
+      // Check if condition for scheduling PTO are satisfied
+      // The connection supports SACK [RFC2018]
+      // The connection has no SACKed sequences in the SACK scoreboard
+      // The connection is not in loss recovery
+      bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_OPEN;
+
+      if (checkConnectionState && !isTlpProbe)
+        {
+          // Cancel an existing timer if any.
+          if (m_tlptimerEvent.IsRunning()) m_tlptimerEvent.Cancel();
+          // Reschedule TLP timer with an updated PTO
+          m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this); 
+        }
+      if (isTlpProbe)
+        {
+          isTlpProbe = false;
+        }
+    }
     }
 
   // Note the highest ACK and tell app to send more

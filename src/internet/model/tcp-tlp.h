@@ -17,7 +17,7 @@
  *
  * Author: Shikha Bakshi <shikhabakshi912@gmail.com>
  *         Mohit P. Tahiliani <tahiliani@nitk.edu.in>
-           Keerthana Polkampally <keerthana.keethu.p@gmail.com>
+           Keerthana Polkampally <keerthana.keetu.p@gmail.com>
            Archana Priyadarshani Sahoo <archana98priya@gmail.com>
            Durvesh Shyam  Bhalekar <durvesh.5.db@gmail.com>
  */
@@ -45,14 +45,11 @@ public:
   //brief Copy constructor.
   //param other object to copy.
   TcpTlp (const TcpTlp &other);
-
-  //Returns PTO value
-  Time GetPTO();
   
   //brief Deconstructor
   virtual ~TcpTlp ();
 
-  void CalculatePto(Time srtt, uint32_t flightsize, Time rto, Time curr_pto);
+  Time CalculatePto(Time srtt, uint32_t flightsize, Time rto);
 
   private:
 
