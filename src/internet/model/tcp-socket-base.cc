@@ -3140,10 +3140,7 @@ TcpSocketBase::PTOTimeout (void)
           // std::cout<<lastPacketSent<<std::endl;
           // Send Probe packet
           sz = SendDataPacket (lastPacketSent, m_tcb->m_segmentSize, m_connected);
-          // Incrementing the sequence number
-          m_tcb->m_nextTxSequence += sz;
         }
-        
      }
     //NS_ASSERT(sz>0);
 
@@ -3269,7 +3266,7 @@ TcpSocketBase::SendPendingData (bool withAck)
                         " size " << sz);
           ++nPacketsSent;
           bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_OPEN;
-          if (m_tlpEnabled && checkConnectionState)
+          if (m_tlpEnabled && checkConnectionState & !isTlpProbe)
             {
               Time rto_left = MilliSeconds((Simulator::GetDelayLeft (m_retxEvent)));
              // Schedule TLP timer
@@ -3280,7 +3277,7 @@ TcpSocketBase::SendPendingData (bool withAck)
                }
              uint32_t inflight = BytesInFlight (); 
              Time rtt = m_rtt->GetEstimate ();
-             Time m_pto = m_tlp->CalculatePto(rtt,inflight,MilliSeconds (rto_left));
+             Time m_pto = m_tlp->CalculatePto(rtt,inflight, (rto_left));
             
              m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);  
             }
