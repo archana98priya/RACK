@@ -3125,7 +3125,7 @@ TcpSocketBase::PTOTimeout (void)
       
     uint32_t sz = 0;
     SequenceNumber32 lastPacketSent;
-    if (checkConnectionState)
+    if (checkConnectionState && m_txBuffer->Size () > 0)
     { 
        if(transmitableData > 0)
         {
@@ -3140,6 +3140,13 @@ TcpSocketBase::PTOTimeout (void)
           // std::cout<<lastPacketSent<<std::endl;
           // Send Probe packet
           sz = SendDataPacket (lastPacketSent, m_tcb->m_segmentSize, m_connected);
+    isTlpProbe = true;
+    // Rearm the RTO timer in order to avoid sending back-to-back probe
+    if (m_retxEvent.IsRunning())
+    { 
+      m_retxEvent.Cancel();
+    }
+    m_retxEvent = Simulator::Schedule (m_rto, &TcpSocketBase::ReTxTimeout, this);
         }
      }
     //NS_ASSERT(sz>0);
@@ -3268,7 +3275,7 @@ TcpSocketBase::SendPendingData (bool withAck)
           bool checkConnectionState = m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_OPEN;
           if (m_tlpEnabled && checkConnectionState & !isTlpProbe)
             {
-              Time rto_left = MilliSeconds((Simulator::GetDelayLeft (m_retxEvent)));
+              double rto_left = ((Simulator::GetDelayLeft (m_retxEvent).GetSeconds ()));
              // Schedule TLP timer
              if (m_tlptimerEvent.IsRunning())
                {
@@ -3277,7 +3284,7 @@ TcpSocketBase::SendPendingData (bool withAck)
                }
              uint32_t inflight = BytesInFlight (); 
              Time rtt = m_rtt->GetEstimate ();
-             Time m_pto = m_tlp->CalculatePto(rtt,inflight, (rto_left));
+             Time m_pto = m_tlp->CalculatePto(rtt,inflight,(rto_left));
             
              m_tlptimerEvent = Simulator::Schedule (m_pto, &TcpSocketBase::PTOTimeout, this);  
             }
@@ -3603,9 +3610,9 @@ TcpSocketBase::NewAck (SequenceNumber32 const& ack, bool resetRTO)
   if (m_tlpEnabled)
     {
       // Calculate the time left for RTO to expire
-      uint32_t rto_left = (Simulator::GetDelayLeft (m_retxEvent).GetSeconds ());
+      double rto_left = (Simulator::GetDelayLeft (m_retxEvent).GetSeconds ());
       // Calculate PTO
-      Time m_pto = m_tlp->CalculatePto(rtt,inflight,MilliSeconds (rto_left));
+      Time m_pto = m_tlp->CalculatePto(rtt,inflight,(rto_left));
 
       // Check if condition for scheduling PTO are satisfied
       // The connection supports SACK [RFC2018]

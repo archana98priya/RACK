@@ -49,7 +49,7 @@ public:
   //brief Deconstructor
   virtual ~TcpTlp ();
 
-  Time CalculatePto(Time srtt, uint32_t flightsize, Time rto);
+  Time CalculatePto(Time srtt, uint32_t flightsize, double rto);
 
   private:
 

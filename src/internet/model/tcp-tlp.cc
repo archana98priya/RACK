@@ -44,7 +44,7 @@ TcpTlp::~TcpTlp ()
 }
 
 // Calculate the value of PTO
-Time 
+/*Time 
 TcpTlp::CalculatePto(Time lastRtt, uint32_t flightsize, Time rto_left)
 {
   NS_LOG_FUNCTION (this);
@@ -89,5 +89,46 @@ TcpTlp::CalculatePto(Time lastRtt, uint32_t flightsize, Time rto_left)
     m_pto = curr_pto; 
 
     return m_pto;  
+}*/
+// Calculate the value of PTO
+Time
+TcpTlp::CalculatePto (Time rtt, uint32_t inflight, double rto_left)
+{
+  NS_LOG_FUNCTION (this);
+
+  Time curr_pto;
+  if (rtt > Seconds (0))
+    {
+      m_tlpRtt = rtt;
+    }
+
+  if (m_srtt == 0)
+    {
+      m_srtt = m_tlpRtt.GetSeconds ();
+    }
+  else
+    {
+      m_srtt = (1 - m_alpha) * m_srtt + m_alpha * m_tlpRtt.GetSeconds ();
+    }
+
+  if (m_srtt > 0)
+    {
+      curr_pto = 2 * Time::FromDouble (m_srtt, Time::S);
+      if (inflight == 1)
+        {
+          curr_pto = Time::FromDouble (0.2,  Time::S);       // 200ms
+        }
+      else
+        {
+          curr_pto = Time::FromDouble (0.002,  Time::S);     // 2ms
+        }
+    }
+  else
+    {
+      curr_pto = Time::FromDouble (1,  Time::S);
+    }
+
+  curr_pto = Min (curr_pto, Time::FromDouble (rto_left, Time::S));
+  return curr_pto;
 }
 }
