@@ -116,16 +116,16 @@ TcpTlp::CalculatePto (Time rtt, uint32_t inflight, double rto_left)
       curr_pto = 2 * Time::FromDouble (m_srtt, Time::S);
       if (inflight == 1)
         {
-          curr_pto = Time::FromDouble (0.2,  Time::S);       // 200ms
+          curr_pto += Time::FromDouble (0.2,  Time::S);       // 200ms
         }
       else
         {
-          curr_pto = Time::FromDouble (0.002,  Time::S);     // 2ms
+          curr_pto += Time::FromDouble (0.002,  Time::S);     // 2ms
         }
     }
   else
     {
-      curr_pto = Time::FromDouble (1,  Time::S);
+      curr_pto += Time::FromDouble (1,  Time::S);
     }
 
   curr_pto = Min (curr_pto, Time::FromDouble (rto_left, Time::S));
